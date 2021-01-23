@@ -1,0 +1,360 @@
+---
+title: "STAT 467 HW 2"
+author: "İrem ÜSTEK"
+output: prettydoc::html_pretty
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE}
+# Necessary Libraries
+library(dplyr, warn.conflicts=F, quietly=T)
+library(tidyverse, warn.conflicts=F, quietly=T)
+library(MVN, warn.conflicts=F, quietly=T)
+library(ICSNP, warn.conflicts=F, quietly=T)
+library(stats, warn.conflicts=F, quietly=T)
+library(factoextra, warn.conflicts=F, quietly=T)
+library(ggthemes, warn.conflicts=F, quietly=T)
+library(rsample, warn.conflicts=F, quietly=T) 
+library(rpart, warn.conflicts=F, quietly=T)
+library(rpart.plot, warn.conflicts=F, quietly=T)
+library(MASS, warn.conflicts=F, quietly=T)
+library(Metrics, warn.conflicts=F, quietly=T)
+library(caret, warn.conflicts=F, quietly=T)
+library(ipred, warn.conflicts=F, quietly=T)
+```
+
+```{r}
+data = read.csv("insurance.csv")
+head(data)
+str(data)
+dim(data)
+```
+
+a) 
+
+# Multivariate Chi-Square QQ Plot 
+
+
+```{r}
+data_a = data[,c(3,7)]
+head(data_a)
+#Multivariate Chi-Square QQ Plot 
+
+mvn(data_a, multivariatePlot = "qq")
+```
+
+Above Chi-Square QQ-Plot indicates non- normality. Although it seemed okay for the initial points, there are too many departures from the straight line for the rest of the graph. So, there is a suspicion on the normality and should be proved using an official normality test.
+
+# Multivariate Normality Test 
+
+For the statistical normality tests that will be utilized, the following hypothesis is valid:
+
+$H_0$: $\text{The data follows normal distribution.}$
+
+$H_1$:  $\text{The data does not follow normal distribution.}$
+
+Here, since data has 1338 rows, Royston MVN Test and Henze-Zirklers MVN Test will be applied.
+
+## Royston MVN Test
+
+```{r}
+mvn(data = data_a, mvnTest = "royston")$multivariateNormality
+
+```
+
+## Henze-Zirklers MVN Test
+```{r}
+mvn(data = data_a, mvnTest = "hz")$multivariateNormality
+```
+
+- Both tests have p-value less than $\alpha$ = 0.05, thus there is not enough evidence to conclude that the data follow a normal distribution. They suggest that the data with BMI and Carges is not normal.
+
+- In that case, there are some procedures that can be followed:
+- The reason causing the non-normality can be detected. This can be due to the outliers. Again, multivariate outlier detection  methods can be utilized by Mahalanobis Distance. These points can be removed from the data, or replaced with more robust statistics, such as median. 
+- We can apply transfomation to the data, and then test for the normality one more time. For example, Box-Cox Power transformation could be useful.
+- If this is an ongoing study, the sample size can be increased. However, most of the time it is not practical and may be time & money wasting.
+- Generating bootstrap samples can be helpful as well because we are simply resampling the data that we have.
+- If none of them work to make the data normal, non-parametric methods can be utilized. 
+
+- However, for the upcoming analyses, we will assume normality for this data.
+
+b) 
+
+Here, since we will be testing that wheter our reponses,BMI and Charges, vary with smoking status or not, we will have the following hypothesis:
+
+$H_0$: $\mu_{smoker}$ = $\mu_{nonsmoker}$
+
+$H_1$: $H_0$: $\mu_{smoker}$ \neq $\mu_{nonsmoker}$
+
+
+$\mu_{smoker}$ = $[\mu_{BMI/smoker}$, $\mu_{Charges/smoker} ]$ 
+
+$\mu_{nonsmoker}$ = $[\mu_{BMI/nonsmoker}$, $\mu_{Charges/nonsmoker}]$
+
+## Hotelling's Two Sample T2- Test
+
+- After assuming normality and constructing the hypothesis above, we can apply Hotelling's Two Sample T2- Test on the data to see whether BMI & Charges changes according to the smoking status.
+
+```{r}
+HotellingsT2(cbind(data$bmi,data$charges) ~ data$smoker)
+```
+- P-value of the test is found as close to 0 which is less than $\alpha$. Thus, there is enough evidence to conclude that the mean of BMI and Charges vary according to the smoking status at 95% confidence level.
+
+c) 
+
+# K-Means Clustering
+
+To prepare our data to K-means clustering, all data must contain numerical values. Thus, we converted categorical variables of Sex and Smoker as dummies.
+
+```{r}
+
+data$sex_n<-ifelse(data$sex=="female",1,0)
+data$smoker_n<-ifelse(data$smoker=="yes",1,0)
+data1<-data[,-c(2,5,6)]
+```
+
+Here, with the help of K-Means clustering,which is an unsupervised learning method, we try to cluster our data into pre-defind subgroups by finding homogenous features among them.
+
+## Scaling 
+
+```{r}
+data1_sc = scale(data1)
+head(data1_sc)
+```
+# Determining Optimal Number of Clusters
+
+```{r}
+unique(data$region)
+
+set.seed(123)
+fviz_nbclust(data1_sc, kmeans, method = "wss")
+
+
+```
+
+- According to the Elbow method, we can choose the optimal number of clusters as  8 since it has the lowest total within-cluster sum of square value before it increases at 9.
+
+-However, as stated, the data has 4 different regions, which are "southwest", "southeast", "northwest","northeast". However, we have found optimal 8 different homogenous clusters among the data. These regions may have different patterns inside.
+
+## K- Means Clustering with k=8
+
+```{r}
+set.seed(123)
+final = kmeans(data1_sc, centers= 8, nstart = 25)
+fviz_cluster(final, data = data1_sc)+theme_economist()
+```
+
+ d) 
+ 
+# Data Splitting
+
+```{r}
+
+set.seed(123)
+split <- initial_split(data1, prop = .8)
+train <- training(split)
+test  <- testing(split)
+
+dim(train)
+dim(test)
+```
+
+e) 
+
+# Multiple Linear Regression Model on BMI
+
+```{r}
+str(train)
+fit_lm = lm(data=train, formula= bmi~.)
+summary(fit_lm)
+```
+
+- In the regression output, it is seen that Children and Sex_n variables are not significant. And Adjusted R Square of the model is quite low. Thus, it could be a better idea to use backward elimination for this model.
+
+# Backward Elimination
+
+```{r}
+fit_lm = stepAIC(fit_lm, direction = "backward",trace=FALSE)
+summary(fit_lm)
+```
+
+- As expected, Sex_n and Children variables are removed from the model because they do not contribute to the model. Adjusted R-Square increased from 0.104 to 0.1052 which is quite low for a train model.
+
+- Performance of the model should be check using test data.
+
+# Prediction of BMI on the Test Data
+
+```{r}
+
+pred = predict(fit_lm, test)
+rmse=rmse(test$bmi, pred)
+rmse
+
+```
+
+- It is found that RMSE= 6.135.
+
+
+
+
+f) 
+
+# Decision Tree Clustering
+
+
+```{r}
+
+fit_dt = rpart(bmi~., data=train, method='anova') # Since we are dealing with a regression case, we defined method as 'anova'.
+
+rpart.plot(fit_dt)
+
+```
+
+- The decision tree above is constrcted with the default parameters. However, we can improve it by finding optimal parameters with Parameter Tuning.
+
+## Parameter Tuning
+
+```{r}
+
+hyper_grid <- expand.grid(
+  minsplit = seq(5, 20, 1),
+  maxdepth = seq(8, 15, 1)
+)
+
+# total number of combinations
+nrow(hyper_grid)
+
+models <- list() #create a list object
+
+for (i in 1:nrow(hyper_grid)) {
+  
+  # get minsplit, maxdepth values at row i
+  minsplit <- hyper_grid$minsplit[i]
+  maxdepth <- hyper_grid$maxdepth[i]
+
+  # train a model and store in the list
+  models[[i]] <- rpart(
+    formula = bmi ~ .,
+    data    = train,
+    method  = "anova",
+    control = list(minsplit = minsplit, maxdepth = maxdepth)
+    )
+}
+
+# function to get optimal cp
+get_cp <- function(x) {
+  min    <- which.min(x$cptable[, "xerror"])
+  cp <- x$cptable[min, "CP"] 
+}
+
+# function to get minimum error
+get_min_error <- function(x) {
+  min    <- which.min(x$cptable[, "xerror"])
+  xerror <- x$cptable[min, "xerror"] 
+}
+
+hyper_grid %>%
+  mutate(
+    cp    = purrr::map_dbl(models, get_cp),
+    error = purrr::map_dbl(models, get_min_error)
+    ) %>%
+  arrange(error) %>%
+  top_n(-5, wt = error)
+```
+
+
+- When we look at the table above, we can choose parameter combination that gives the smallest error which is minsplit=11, maxdepth=14 and cp=0.01. Then, we can fit our train model to decision tree using these optimal parameters.
+
+
+
+## Final Optimal Decision Tree
+
+```{r}
+
+optimal_tree <- rpart(
+    formula = bmi ~ .,
+    data    = train,
+    method  = "anova",
+    control = list(minsplit = 11, maxdepth = 14, cp = 0.01)
+    )
+
+# Prediction on BMI in Test Data 
+pred <- predict(optimal_tree, newdata = test)
+rmse(test$bmi,pred)
+```
+
+- At the end, RMSE is found as 5.997 when we use optimal parameters in Decision Tree algorithm. 
+- It should be noted that RMSE was 6.135 in MLR. So, we managed to decrease it down to 5.99. This is an improvement on the performance of the model when predicting the test data.
+
+
+g) 
+
+# Bagging with 10-fold corss validation
+
+- Now, rather than fitting only one decision tree, we will use multiple models and use their average in order to decrease the variance.
+
+```{r}
+ctrl <- trainControl(method = "cv",  number = 10)
+
+# CV bagged model
+bagged_cv <- train(
+  bmi ~ .,
+  data = train,
+  method = "treebag",
+  trControl = ctrl,
+  importance = TRUE
+  )
+
+# assess results
+bagged_cv
+```
+
+## OOB RMSE
+
+```{r}
+
+# assess 10-50 bagged trees
+ntree <- 10:50
+
+# create empty vector to store OOB RMSE values
+rmse <- vector(mode = "numeric", length = length(ntree))
+
+for (i in seq_along(ntree)) {
+  # reproducibility
+  set.seed(123)
+  
+  # perform bagged model
+  model <- bagging(
+  formula = bmi ~ .,
+  data    = train,
+  coob    = TRUE,
+  nbagg   = ntree[i]
+)
+  # get OOB error
+  rmse[i] <- model$err
+}
+
+plot(ntree, rmse, type = 'l', lwd = 2)
+abline(v = 25, col = "red", lty = "dashed")
+
+
+
+```
+
+## RMSE
+
+```{r}
+rmse(test$bmi, predict(bagged_cv,test))
+```
+
+
+h) 
+
+- We found that decision tree has 5.99 RMSE while Bagging has 5.95 RMSE. So, among these three models (MLR, Decision tree, Bagging), Bagging (Bootstrap Aggregating) has the smallest RMSE and outperforms.
