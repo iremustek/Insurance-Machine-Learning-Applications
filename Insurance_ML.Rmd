@@ -1,5 +1,5 @@
 ---
-title: "STAT 467 HW 2"
+title: "Insurance ML Application"
 author: "İrem ÜSTEK"
 output: prettydoc::html_pretty
 vignette: >
